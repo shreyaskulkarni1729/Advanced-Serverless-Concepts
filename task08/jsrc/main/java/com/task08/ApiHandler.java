@@ -1,41 +1,51 @@
 package com.task08;
 
+import com.amazonaws.services.lambda.runtime.Context;
+import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.syndicate.deployment.annotations.lambda.LambdaHandler;
+import com.syndicate.deployment.annotations.lambda.LambdaLayer;
+import com.syndicate.deployment.annotations.lambda.LambdaUrlConfig;
+import com.syndicate.deployment.model.Architecture;
+import com.syndicate.deployment.model.ArtifactExtension;
+import com.syndicate.deployment.model.DeploymentRuntime;
+import com.syndicate.deployment.model.RetentionSetting;
+import com.syndicate.deployment.model.lambda.url.AuthType;
+import com.syndicate.deployment.model.lambda.url.InvokeMode;
+import org.example.OpenMeteoApi;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.concurrent.CompletableFuture;
-import com.fasterxml.jackson.databind.*;
+import java.util.HashMap;
+import java.util.Map;
 
-public class ApiHandler {
-	private static final String API_URL =
-			"https://api.open-meteo.com/v1/forecast?latitude=50.43752&longitude=30.5&current=temperature_2m,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m";
+@LambdaHandler(
+    lambdaName = "api_handler",
+	roleName = "api_handler-role",
+	layers = {"lambda_layer"},
+	isPublishVersion = true,
+	aliasName = "${lambdas_alias_name}",
+	logsExpiration = RetentionSetting.SYNDICATE_ALIASES_SPECIFIED
+)
+@LambdaLayer(
+		layerName = "lambda_layer",
+		runtime = DeploymentRuntime.JAVA11,
+		libraries = {"lib/Open-Meteo-API-1.0-SNAPSHOT.jar"},
+		artifactExtension = ArtifactExtension.ZIP,
+		architectures = Architecture.ARM64
+)
+@LambdaUrlConfig(
+		authType = AuthType.NONE,
+		invokeMode = InvokeMode.BUFFERED
+)
+public class ApiHandler implements RequestHandler<Object, String> {
 
-	private HttpClient httpClient;
-	private ObjectMapper objectMapper;
-	public ApiHandler(){
-		this.httpClient=HttpClient.newHttpClient();
-		this.objectMapper=new ObjectMapper();
-	}
-
-	public JsonNode getWeatherData() throws Exception {
-		HttpRequest httpRequest=HttpRequest.newBuilder()
-				.uri(URI.create(API_URL))
-				.GET()
-				.header("Accept", "application/json")
-				.build();
-
-		CompletableFuture<HttpResponse<String>> responseCompletableFuture = httpClient.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofString());
-
-		HttpResponse<String> response=responseCompletableFuture.get();
-		if (response.statusCode()==200){
-			return objectMapper.readTree(response.body());
+	public String handleRequest(Object request, Context context) {
+		JsonNode response = null;
+		try {
+			OpenMeteoApi openMeteoApi = new OpenMeteoApi();
+			response = openMeteoApi.getWeatherData();
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
-		else {
-			throw new RuntimeException("Failed to get weather data: " + response.statusCode());
-		}
-
+		return response.toString();
 	}
-
 }
